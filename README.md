@@ -1,10 +1,10 @@
 # 智谱 GLM Coding Plan 抢购助手 + 本地 OCR 自动验证码
 
-这是一个面向智谱 GLM Coding Plan 的抢购辅助项目，包含 Tampermonkey 油猴脚本和本地 CPU/GPU OCR 后端，用于限时抢购流程辅助、中文点选验证码自动识别、验证码自动点击、套餐按钮提前可点、限流重试和多窗口监控。目前仅适配 Google Chrome 和 Microsoft Edge，推荐使用 Chrome。
+这是一个面向智谱 GLM Coding Plan 的抢购辅助项目，包含 Tampermonkey 油猴脚本和本地 CPU/GPU OCR 后端，用于限时抢购流程辅助、一键启动后端、中文点选验证码自动识别、验证码自动点击、套餐按钮提前可点、限流重试和多窗口监控。目前仅适配 Google Chrome 和 Microsoft Edge，推荐使用 Chrome。
 
-关键词：GLM Coding Rush、GLM Coding Plan 抢购助手、GLM Coding Plan 抢购脚本、GLM Coding Plan 一键抢购、智谱 GLM Coding 抢购、智谱编程套餐抢购、GLM Coding 油猴脚本、Tampermonkey userscript、Auto-Purchase Userscript、自动解锁售罄、限流重试、多窗口并发、本地 OCR、CPU OCR、GPU OCR、中文点选验证码、验证码自动点击、订阅助手。
+关键词：GLM Coding Rush、GLM Coding Plan 抢购助手、GLM Coding Plan 抢购脚本、GLM Coding Plan 一键抢购、GLM Coding 一键启动、智谱 GLM Coding 抢购、智谱编程套餐抢购、GLM Coding 油猴脚本、Tampermonkey userscript、Auto-Purchase Userscript、自动解锁售罄、限流重试、多窗口并发、本地 OCR、CPU OCR、GPU OCR、中文点选验证码、验证码自动点击、订阅助手。
 
-English keywords: GLM Coding Rush, GLM Coding Plan auto purchase, GLM Coding Plan rush helper, GLM Coding userscript, Tampermonkey script, local OCR captcha solver, CPU OCR backend, GPU OCR backend, Chinese captcha auto click.
+English keywords: GLM Coding Rush, GLM Coding Plan auto purchase, GLM Coding Plan rush helper, GLM Coding one-click startup, GLM Coding userscript, Tampermonkey script, local OCR captcha solver, CPU OCR backend, GPU OCR backend, Chinese captcha auto click.
 
 ## 演示
 
@@ -74,13 +74,21 @@ D:\Tools\glm-coding-helper
 ### 3. 安装油猴脚本
 
 1. 在 Chrome 或 Edge 安装 Tampermonkey：https://www.tampermonkey.net/
-2. 打开解压目录里的：
+2. 安装脚本，二选一：
+
+方式 A：访问 Greasy Fork 页面安装：
+
+```text
+https://greasyfork.org/zh-CN/scripts/579760-glm-coding-helper
+```
+
+方式 B：打开解压目录里的本地脚本：
 
 ```text
 glm-coding-helper.user.js
 ```
 
-3. 复制全部内容，新建 Tampermonkey 脚本，粘贴并保存。
+3. 如果使用方式 B，就复制全部内容，新建 Tampermonkey 脚本，粘贴并保存。
 4. 确认脚本已启用。
 
 Chrome 用户如果脚本不运行，请打开扩展详情，开启：
@@ -89,7 +97,7 @@ Chrome 用户如果脚本不运行，请打开扩展详情，开启：
 - 允许用户脚本
 - 允许在无痕模式中启用（如果你用无痕窗口）
 
-仓库根目录的 `glm-coding-helper.user.js` 是给普通用户安装的入口；`scripts/userscripts/` 只是保留给开发和旧路径兼容。
+Greasy Fork 和仓库根目录的 `glm-coding-helper.user.js` 都是给普通用户安装的入口；`scripts/userscripts/` 只是保留给开发和旧路径兼容。
 
 ### 4. 启动后端
 
