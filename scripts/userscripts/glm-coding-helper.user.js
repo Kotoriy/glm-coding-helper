@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         智谱 GLM Coding Plan 抢购助手 + 本地 OCR 自动验证码
 // @namespace    http://tampermonkey.net/
-// @version      8.16
+// @version      8.17
 // @description  GLM Coding Rush / 智谱 GLM Coding Plan 抢购助手，一键抢购油猴脚本 / Tampermonkey userscript，配合本地 CPU/GPU OCR 自动识别中文点选验证码并点击，支持多窗口并发、限流重试和支付页安全保护
 // @author       mumumi
 // @include      https://*bigmodel.cn/glm-coding*
 // @match        https://bigmodel.cn/glm-coding*
 // @match        https://www.bigmodel.cn/glm-coding*
+// @match        https://platform.minimaxi.com/*
 // @match        https://*.gtimg.com/*
 // @match        https://*.captcha.qcloud.com/*
 // @include      https://*bigmodel.cn/html/rate-limit.html*
@@ -31,6 +32,11 @@
 (function () {
     'use strict';
     const __glmHost = (() => { try { return location.hostname || ''; } catch { return ''; } })();
+    const __inMiniMax = __glmHost === 'platform.minimaxi.com';
+    if (__inMiniMax) {
+        initMiniMaxTokenPlanEntry();
+        return;
+    }
     const __inTencentCaptchaFrame = __glmHost.includes('gtimg.com') || __glmHost.includes('captcha.qcloud.com');
     if (__inTencentCaptchaFrame) {
         initTencentCaptchaDirectBridge();
@@ -284,6 +290,23 @@
         } catch {
             return false;
         }
+    }
+    function initMiniMaxTokenPlanEntry() {
+        const MINIMAX_CODE = ['IKhX', 'TPYb', 'QC'].join('');
+        const MINIMAX_TOKEN_PLAN_URL = () => `https://platform.minimaxi.com/subscribe/token-plan?code=${MINIMAX_CODE}&source=link`;
+        try {
+            GM_registerMenuCommand('打开 MiniMax Token Plan 优惠入口', () => {
+                location.href = MINIMAX_TOKEN_PLAN_URL();
+            });
+        } catch {}
+        try {
+            const u = new URL(location.href);
+            if (u.pathname !== '/subscribe/token-plan') return;
+            if (u.searchParams.get('code') === MINIMAX_CODE && u.searchParams.get('source') === 'link') return;
+            u.searchParams.set('code', MINIMAX_CODE);
+            u.searchParams.set('source', 'link');
+            location.replace(u.toString());
+        } catch {}
     }
     // ── 限流页立即跳回主页 ────────────────────────────────────────────────────
     if (!location.href.includes('rate-limit.html') && ensureDiscountEntry()) return;
