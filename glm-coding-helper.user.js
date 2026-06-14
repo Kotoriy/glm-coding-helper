@@ -51,9 +51,9 @@
         const captchaCfg = (() => {
             try {
                 const raw = GM_getValue('glm_coding_config_v5', '{}');
-                return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, ...JSON.parse(raw || '{}') };
+                return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, AUTO_RUSH_FLOW: false, ...JSON.parse(raw || '{}') };
             } catch {
-                return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false };
+                return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, AUTO_RUSH_FLOW: false };
             }
         })();
         function log(msg) {
@@ -241,7 +241,7 @@
                 await sleep(180);
             }
             await sleep(250);
-            if (captchaCfg.AUTO_CAPTCHA_CONFIRM) clickConfirm();
+            if (captchaCfg.AUTO_CAPTCHA_CONFIRM || captchaCfg.AUTO_RUSH_FLOW) clickConfirm();
         }
         async function tick() {
             if (solving) return;
@@ -508,6 +508,8 @@
         AUTO_CLICK_SUB    : true,
         AUTO_CAPTCHA_CLICK : true,
         AUTO_CAPTCHA_CONFIRM: false,
+        AUTO_RUSH_FLOW    : false,
+        RUSH_RETRY_LIMIT  : 10,
     };
     function loadCfg() { try { const s = GM_getValue(STORAGE_KEY, null); return s ? { ...DEF, ...JSON.parse(s) } : { ...DEF }; } catch { return { ...DEF }; } }
     function saveCfg(c) { GM_setValue(STORAGE_KEY, JSON.stringify(c)); }
@@ -586,6 +588,7 @@
     let taskTarget = null, taskPhase = 'IDLE', taskClickTime = 0, taskRLCount = 0;
     let lastCloseReason = '';
     let sleepUntil = 0;
+    let rushRetryCount = 0;
     const MAX_RL = 3, MODAL_WAIT = 15000, EMPTY_SWEEP_CONFIRM = 3, EMPTY_SWEEP_RETRY_MS = 180000, SOLD_OUT_CONFIRM = 2;
     // ── 工具函数 ──────────────────────────────────────────────────────────────
     function parseRestock(text) {
@@ -850,6 +853,11 @@
                     <span style="font-size:14px;color:#555">自动点击验证码确定</span>
                     <span title="默认关闭。开启后点完验证码文字会自动点确定；关闭后需要你手动点确定。" style="margin-left:6px;cursor:help;color:#999;font-size:14px;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;line-height:1">?</span>
                 </label>
+                <label style="display:flex;align-items:center;cursor:pointer">
+                    <input type="checkbox" id="glm-arf" ${CFG.AUTO_RUSH_FLOW ? 'checked' : ''} style="margin-right:8px">
+                    <span style="font-size:14px;color:#555">启用自动抢购流程</span>
+                    <span title="开启后自动完成：点击特惠订购→等待验证码识别→点击确定。如果没有出现付款金额则自动关闭弹窗重试，直到手动取消或生成付款金额。" style="margin-left:6px;cursor:help;color:#999;font-size:14px;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;line-height:1">?</span>
+                </label>
             </div>
             <div style="display:flex;justify-content:space-between;gap:10px">
                 <button id="glm-multi" style="padding:8px 16px;border:1px solid #52c41a;background:#f6ffed;color:#52c41a;border-radius:6px;cursor:pointer;font-weight:600">🚀 一键多开</button>
@@ -876,6 +884,8 @@
                 AUTO_CLICK_SUB    : panel.querySelector('#glm-acs').checked,
                 AUTO_CAPTCHA_CLICK: panel.querySelector('#glm-acc').checked,
                 AUTO_CAPTCHA_CONFIRM: panel.querySelector('#glm-acf').checked,
+                AUTO_RUSH_FLOW    : panel.querySelector('#glm-arf').checked,
+                RUSH_RETRY_LIMIT  : CFG.RUSH_RETRY_LIMIT,
                 SAFE_DEFAULTS_VERSION,
             });
             ov.remove(); alert('已保存，即将刷新。'); location.reload();
@@ -1045,40 +1055,56 @@
                 taskPhase = 'IDLE'; return;
             }
             if (isPayDialog()) {
-                const verdict = checkPayDialog();
-                if (verdict === 'close') {
-                    if (!CFG.AUTO_CLOSE_INVALID) {
-                        state = 'DONE';
-                        setBar('⚠️ 检测到异常支付弹窗，请手动确认是否需要扫码！', '#d46b08');
+                    const verdict = checkPayDialog();
+                    if (verdict === 'close') {
+                        if (!CFG.AUTO_CLOSE_INVALID) {
+                            state = 'DONE';
+                            setBar('⚠️ 检测到异常支付弹窗，请手动确认是否需要扫码！', '#d46b08');
+                            return;
+                        }
+                        const reason = PS.result === 'busy'
+                            ? `✈️ 系统繁忙(${PS.rawCode || 555})，关闭弹窗`
+                            : `📉 ${TABS_MAP[taskTarget.tab]}·${PKGS_MAP[taskTarget.pkg]} 售罄`;
+                        closePayDialog();
+                        lastCloseReason = reason;
+                        const nextIdx = qIdx + 1;
+                        const isLoop = nextIdx >= scanQueue.length;
+                        qIdx = isLoop ? 0 : nextIdx;
+                        taskTarget = null; taskPhase = 'IDLE'; taskRLCount = 0;
+                        state = 'SCANNING';
+                        setBar(`${reason}，${isLoop ? '🔄 轮询一圈，从头重试...' : '试下一个...'} `, '#d46b08');
                         return;
                     }
-                    const reason = PS.result === 'busy'
-                        ? `✈️ 系统繁忙(${PS.rawCode || 555})，关闭弹窗`
-                        : `📉 ${TABS_MAP[taskTarget.tab]}·${PKGS_MAP[taskTarget.pkg]} 售罄`;
-                    closePayDialog();
-                    lastCloseReason = reason;
-                    const nextIdx = qIdx + 1;
-                    const isLoop = nextIdx >= scanQueue.length;
-                    qIdx = isLoop ? 0 : nextIdx;
-                    taskTarget = null; taskPhase = 'IDLE'; taskRLCount = 0;
-                    state = 'SCANNING';
-                    setBar(`${reason}，${isLoop ? '🔄 轮询一圈，从头重试...' : '试下一个...'} `, '#d46b08');
+                    if (verdict === 'warn') {
+                        setBar('⚠️ 弹窗显示小飞机但API未返回繁忙/售罄，前后端不一致。不自动关闭，请手动确认。如果有二维码请扫码支付！', '#ff4d4f');
+                        return;
+                    }
+                    const prices = readDialogPrices();
+                    if (everSucceeded || prices?.any) {
+                        state = 'DONE';
+                        rushRetryCount = 0;
+                        if (everSucceeded) showPayAlarm();
+                        setBar('💳 <b>支付弹窗已出现！请立即扫码支付！</b> 脚本已停止。', '#16a34a');
+                    } else if (CFG.AUTO_RUSH_FLOW) {
+                        const elapsed = Date.now() - taskClickTime;
+                        if (elapsed > 15000) {
+                            rushRetryCount++;
+                            if (rushRetryCount >= CFG.RUSH_RETRY_LIMIT) {
+                                state = 'DONE';
+                                setBar(`⚠️ 自动抢购重试次数已达上限(${CFG.RUSH_RETRY_LIMIT})，请手动检查！`, '#ff4d4f');
+                            } else {
+                                closePayDialog();
+                                setBar(`🔄 自动抢购第 ${rushRetryCount}/${CFG.RUSH_RETRY_LIMIT} 次重试...`, '#d46b08');
+                                taskPhase = 'IDLE';
+                            }
+                        } else {
+                            setBar(`🔄 ${TABS_MAP[tab]}·${PKGS_MAP[pkg]} 等待付款金额... (${(elapsed/1000).toFixed(1)}s)`, '#1677ff');
+                        }
+                    } else {
+                        setBar(`🔄 ${TABS_MAP[tab]}·${PKGS_MAP[pkg]} 弹窗等待确认...`, '#1677ff');
+                    }
                     return;
                 }
-                if (verdict === 'warn') {
-                    setBar('⚠️ 弹窗显示小飞机但API未返回繁忙/售罄，前后端不一致。不自动关闭，请手动确认。如果有二维码请扫码支付！', '#ff4d4f');
-                    return;
-                }
-                const prices = readDialogPrices();
-                if (everSucceeded || prices?.any) {
-                    state = 'DONE';
-                    if (everSucceeded) showPayAlarm();
-                    setBar('💳 <b>支付弹窗已出现！请立即扫码支付！</b> 脚本已停止。', '#16a34a');
-                } else {
-                    setBar(`🔄 ${TABS_MAP[tab]}·${PKGS_MAP[pkg]} 弹窗等待确认...`, '#1677ff');
-                }
-                return;
-            }
             if (isSuccessDialog()) {
                 setS(tab, pkg, 2); state = 'DONE';
                 setBar('🎉 订阅成功！恭喜！', '#237804'); return;
@@ -1161,9 +1187,9 @@
     const CAPTCHA_CFG = (() => {
         try {
             const raw = GM_getValue('glm_coding_config_v5', '{}');
-            return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, ...JSON.parse(raw || '{}') };
+            return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, AUTO_RUSH_FLOW: false, ...JSON.parse(raw || '{}') };
         } catch {
-            return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false };
+            return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, AUTO_RUSH_FLOW: false };
         }
     })();
     function getWindowIndex() {
@@ -1321,21 +1347,25 @@
             rushState = 'idle';
             (async function() {
                 var isRushMode = isGoldenTime();
-                if (isRushMode) {
-                    await waitForTargetTime();
-                    rushStatus('\uD83D\uDE80 [#' + winIdx + '] \u5361\u70B9\u53D1\u9001!', '#ff4d4f');
+                if (CAPTCHA_CFG.AUTO_RUSH_FLOW || isRushMode) {
+                    if (isRushMode) {
+                        await waitForTargetTime();
+                        rushStatus('\uD83D\uDE80 [#' + winIdx + '] \u5361\u70B9\u53D1\u9001!', '#ff4d4f');
+                    } else {
+                        await new Promise(function(r) { setTimeout(r, 300); });
+                        rushStatus('\uD83D\uDE80 [#' + winIdx + '] \u81EA\u52A8\u786E\u8BA4...', '#237804');
+                    }
+                    rushState = 'confirming';
+                    var clicked = findAndClickConfirm();
+                    if (clicked) {
+                        rushState = 'confirmed';
+                        rushStatus('\uD83C\uDFAF [#' + winIdx + '] \u5DF2\u70B9\u786E\u8BA4!' + (isRushMode ? ' (\u5361\u70B0)' : ''), '#237804');
+                    } else {
+                        rushState = 'idle';
+                        rushStatus('\u26A0\uFE0F [#' + winIdx + '] \u672A\u627E\u5230\u786E\u8BA4\u6309\u94AE!', '#faad14');
+                    }
                 } else {
-                    await new Promise(function(r) { setTimeout(r, 300); });
-                    rushStatus('\uD83D\uDE80 [#' + winIdx + '] \u81EA\u52A8\u786E\u8BA4...', '#237804');
-                }
-                rushState = 'confirming';
-                var clicked = findAndClickConfirm();
-                if (clicked) {
-                    rushState = 'confirmed';
-                    rushStatus('\uD83C\uDFAF [#' + winIdx + '] \u5DF2\u70B9\u786E\u8BA4!' + (isRushMode ? ' (\u5361\u70B0)' : ''), '#237804');
-                } else {
-                    rushState = 'idle';
-                    rushStatus('\u26A0\uFE0F [#' + winIdx + '] \u672A\u627E\u5230\u786E\u8BA4\u6309\u94AE!', '#faad14');
+                    rushStatus('\u23F3 [#' + winIdx + '] \u8BF7\u624B\u52A8\u70B9\u51FB\u786E\u8BA4\u6309\u94AE', '#1890ff');
                 }
             })();
         } catch (e) {
