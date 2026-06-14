@@ -875,7 +875,38 @@
                     <span style="font-size:14px;color:#555">启用自动抢购流程</span>
                     <span title="开启后自动完成：点击特惠订购→等待验证码识别→点击确定。如果没有出现付款金额则自动关闭弹窗重试，直到手动取消或生成付款金额。" style="margin-left:6px;cursor:help;color:#999;font-size:14px;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;line-height:1">?</span>
                 </label>
+                <div id="glm-rush-time" style="margin-top:8px;padding:10px;background:#f5f5f5;border-radius:6px;display:${CFG.AUTO_RUSH_FLOW ? 'block' : 'none'}">
+                    <div style="font-size:13px;font-weight:bold;margin-bottom:8px;color:#444">抢购时间段设置</div>
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                        <span style="font-size:13px;color:#555">开始时间：</span>
+                        <input type="number" id="glm-rush-start-hour" value="${CFG.RUSH_START_HOUR || 9}" min="0" max="23" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                        <span>:</span>
+                        <input type="number" id="glm-rush-start-min" value="${CFG.RUSH_START_MIN || 30}" min="0" max="59" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                        <span style="font-size:13px;color:#555">结束时间：</span>
+                        <input type="number" id="glm-rush-end-hour" value="${CFG.RUSH_END_HOUR || 10}" min="0" max="23" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                        <span>:</span>
+                        <input type="number" id="glm-rush-end-min" value="${CFG.RUSH_END_MIN || 10}" min="0" max="59" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="font-size:13px;color:#555">重试次数：</span>
+                        <input type="number" id="glm-rush-retry" value="${CFG.RUSH_RETRY_LIMIT || 10}" min="1" max="100" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                        <span style="font-size:12px;color:#999">次（达到上限后停止）</span>
+                    </div>
+                </div>
             </div>
+            <script>
+                (function() {
+                    var checkbox = document.getElementById('glm-arf');
+                    var timeSection = document.getElementById('glm-rush-time');
+                    if (checkbox && timeSection) {
+                        checkbox.addEventListener('change', function() {
+                            timeSection.style.display = checkbox.checked ? 'block' : 'none';
+                        });
+                    }
+                })();
+            </script>
             <div style="display:flex;justify-content:space-between;gap:10px">
                 <button id="glm-multi" style="padding:8px 16px;border:1px solid #52c41a;background:#f6ffed;color:#52c41a;border-radius:6px;cursor:pointer;font-weight:600">🚀 一键多开</button>
                 <div style="display:flex;gap:10px">
@@ -902,7 +933,11 @@
                 AUTO_CAPTCHA_CLICK: panel.querySelector('#glm-acc').checked,
                 AUTO_CAPTCHA_CONFIRM: panel.querySelector('#glm-acf').checked,
                 AUTO_RUSH_FLOW    : panel.querySelector('#glm-arf').checked,
-                RUSH_RETRY_LIMIT  : CFG.RUSH_RETRY_LIMIT,
+                RUSH_START_HOUR   : parseInt(panel.querySelector('#glm-rush-start-hour').value) || 9,
+                RUSH_START_MIN    : parseInt(panel.querySelector('#glm-rush-start-min').value) || 30,
+                RUSH_END_HOUR     : parseInt(panel.querySelector('#glm-rush-end-hour').value) || 10,
+                RUSH_END_MIN      : parseInt(panel.querySelector('#glm-rush-end-min').value) || 10,
+                RUSH_RETRY_LIMIT  : parseInt(panel.querySelector('#glm-rush-retry').value) || 10,
                 SAFE_DEFAULTS_VERSION,
             });
             ov.remove(); alert('已保存，即将刷新。'); location.reload();
