@@ -274,7 +274,7 @@
         GM_setValue(EARLY_STORAGE_KEY, JSON.stringify(_ec));
     }
     const EARLY_AUTO_CLOSE_INVALID = _ec.AUTO_CLOSE_INVALID === true;
-    const GLM_DISCOUNT_CODE = ['9G', 'XW', 'L9', 'KC', 'GZ'].join('');
+    const GLM_DISCOUNT_CODE = ['MU', 'MO', 'GW', 'JG', 'RP'].join('');
     const GLM_CODING_URL = () => `https://www.bigmodel.cn/glm-coding?ic=${GLM_DISCOUNT_CODE}&closedialog=true`;
     function ensureDiscountEntry() {
         try {
