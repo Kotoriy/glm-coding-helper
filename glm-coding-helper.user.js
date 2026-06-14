@@ -510,6 +510,10 @@
         AUTO_CAPTCHA_CONFIRM: false,
         AUTO_RUSH_FLOW    : false,
         RUSH_RETRY_LIMIT  : 10,
+        RUSH_START_HOUR   : 9,
+        RUSH_START_MIN    : 30,
+        RUSH_END_HOUR     : 10,
+        RUSH_END_MIN      : 10,
     };
     function loadCfg() { try { const s = GM_getValue(STORAGE_KEY, null); return s ? { ...DEF, ...JSON.parse(s) } : { ...DEF }; } catch { return { ...DEF }; } }
     function saveCfg(c) { GM_setValue(STORAGE_KEY, JSON.stringify(c)); }
@@ -623,6 +627,19 @@
         const start = 9 * 60 + 30;  // 9:30
         const end = 10 * 60 + 10;   // 10:10
         return time >= start && time <= end;
+    }
+    // ── 抢购时间段判断（可配置）────────────────────────────────────────────
+    function isRushTime() {
+        const now = new Date();
+        const h = now.getHours();
+        const m = now.getMinutes();
+        const s = now.getSeconds();
+        const time = h * 3600 + m * 60 + s;
+        const start = (CFG.RUSH_START_HOUR || 9) * 3600 + (CFG.RUSH_START_MIN || 30) * 60;
+        const end = (CFG.RUSH_END_HOUR || 10) * 3600 + (CFG.RUSH_END_MIN || 10) * 60;
+        const inTime = time >= start && time <= end;
+        console.log(`[GLM DEBUG] isRushTime check: now=${h}:${m}:${s}, start=${CFG.RUSH_START_HOUR}:${CFG.RUSH_START_MIN}, end=${CFG.RUSH_END_HOUR}:${CFG.RUSH_END_MIN}, result=${inTime}`);
+        return inTime;
     }
     // ── DOM 访问 ──────────────────────────────────────────────────────────────
     const tabEl     = n => document.querySelectorAll('#switchTabBox .switch-tab-item')[n];
@@ -1024,19 +1041,40 @@
                 console.log(`[GLM DEBUG] Button not buyable yet`);
                 return;
             }
-            if (!CFG.AUTO_CLICK_SUB && !CFG.AUTO_RUSH_FLOW) {
-                showPayAlarm();
-                setBar(`🎯 <b>发现可购！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}</b>，请手动点击订阅`, '#389e0d');
-                console.log(`[GLM DEBUG] AUTO_CLICK_SUB=${CFG.AUTO_CLICK_SUB}, AUTO_RUSH_FLOW=${CFG.AUTO_RUSH_FLOW} - waiting for manual click`);
+            // 在自动抢购模式下，只有在抢购时间段内才自动点击
+            if (CFG.AUTO_RUSH_FLOW) {
+                if (!isRushTime()) {
+                    const now = new Date();
+                    const h = now.getHours();
+                    const m = now.getMinutes();
+                    const startStr = `${CFG.RUSH_START_HOUR}:${String(CFG.RUSH_START_MIN || 0).padStart(2, '0')}`;
+                    const endStr = `${CFG.RUSH_END_HOUR}:${String(CFG.RUSH_END_MIN || 0).padStart(2, '0')}`;
+                    setBar(`⏰ <b>${h}:${String(m).padStart(2,'0')}</b> 未到抢购时间(${startStr}-${endStr})，等待中...`, '#d46b08');
+                    console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled but not in rush time, waiting...`);
+                    return;
+                }
+                console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled and in rush time, clicking subscribe button`);
+                PS.result = null; PS.inProgress = true;
+                b.click(); 
+                console.log(`[GLM DEBUG] Clicked subscribe button!`);
+                taskClickTime = Date.now(); taskPhase = 'WAITING';
+                rushRetryCount = 0;
+                setBar(`🚀 自动抢购中！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
                 return;
             }
-            console.log(`[GLM DEBUG] AUTO_RUSH_FLOW=${CFG.AUTO_RUSH_FLOW}, proceeding to click subscribe button`);
+            if (!CFG.AUTO_CLICK_SUB) {
+                showPayAlarm();
+                setBar(`🎯 <b>发现可购！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}</b>，请手动点击订阅`, '#389e0d');
+                console.log(`[GLM DEBUG] AUTO_CLICK_SUB=${CFG.AUTO_CLICK_SUB}, waiting for manual click`);
+                return;
+            }
+            console.log(`[GLM DEBUG] AUTO_CLICK_SUB enabled, clicking subscribe button`);
             PS.result = null; PS.inProgress = true;
             b.click(); 
             console.log(`[GLM DEBUG] Clicked subscribe button!`);
             taskClickTime = Date.now(); taskPhase = 'WAITING';
             rushRetryCount = 0;
-            setBar(`� ${CFG.AUTO_RUSH_FLOW ? '自动抢购' : '已点击'}，接口重试中... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
+            setBar(`🚀 已点击，接口重试中... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
             return;
         }
         if (taskPhase === 'WAITING') {
