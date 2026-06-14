@@ -1167,9 +1167,23 @@
     }
     // ── v8.4: DOM 级按钮强制启用（安全网）─────────────────────────────────────
     function forceEnableButtons() {
-        document.querySelectorAll('.buy-btn[disabled], .buy-btn.is-disabled, .buy-btn.disabled').forEach(b => {
-            b.removeAttribute('disabled');
-            b.classList.remove('is-disabled', 'disabled');
+        const selectors = [
+            '.buy-btn[disabled]',
+            '.buy-btn.is-disabled',
+            '.buy-btn.disabled',
+            '.glm-coding-package-list .package-card-btn-box button[disabled]',
+            '.glm-coding-package-list .package-card-btn-box button.is-disabled',
+            '.glm-coding-package-list .package-card-btn-box button.disabled',
+            '.glm-coding-package-list button[disabled]',
+            '[class*="package-card"] button[disabled]',
+            '[class*="subscribe"] button[disabled]',
+        ];
+        selectors.forEach(selector => {
+            document.querySelectorAll(selector).forEach(b => {
+                b.removeAttribute('disabled');
+                b.classList.remove('is-disabled', 'disabled');
+                console.log(`[GLM DEBUG] forceEnableButtons: enabled button with selector "${selector}"`);
+            });
         });
     }
     // ── 启动 ──────────────────────────────────────────────────────────────────
