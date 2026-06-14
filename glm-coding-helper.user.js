@@ -1086,17 +1086,7 @@
         const b = btnEl(pkg);
         console.log(`[GLM DEBUG] doTaskUnit btn=${!!b}, isSoldOut=${isSoldOut(b)}, canBuy=${canBuy(b)}`);
         if (taskPhase === 'IDLE') {
-            if (isSoldOut(b)) { 
-                console.log(`[GLM DEBUG] Item sold out, exiting task`);
-                exitTask(); 
-                return; 
-            }
-            if (!canBuy(b)) {
-                setBar(`⏳ 等待按钮就绪... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}`, '#d46b08');
-                console.log(`[GLM DEBUG] Button not buyable yet`);
-                return;
-            }
-            // 在自动抢购模式下，只有在抢购时间段内才自动点击
+            // 在自动抢购模式下，优先判断时间，时间到了就直接点击
             if (CFG.AUTO_RUSH_FLOW) {
                 if (!isRushTime()) {
                     const now = new Date();
@@ -1110,13 +1100,25 @@
                     console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled but not in rush time, waiting...`);
                     return;
                 }
-                console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled and in rush time, clicking subscribe button`);
+                // 时间到了，即使按钮看起来售罄也尝试点击（脚本会强制启用按钮）
+                console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled and in rush time, clicking subscribe button (soldOut=${isSoldOut(b)}, canBuy=${canBuy(b)})`);
                 PS.result = null; PS.inProgress = true;
                 b.click(); 
                 console.log(`[GLM DEBUG] Clicked subscribe button!`);
                 taskClickTime = Date.now(); taskPhase = 'WAITING';
                 rushRetryCount = 0;
                 setBar(`🚀 自动抢购中！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
+                return;
+            }
+            // 非自动抢购模式，保持原有逻辑
+            if (isSoldOut(b)) { 
+                console.log(`[GLM DEBUG] Item sold out, exiting task`);
+                exitTask(); 
+                return; 
+            }
+            if (!canBuy(b)) {
+                setBar(`⏳ 等待按钮就绪... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}`, '#d46b08');
+                console.log(`[GLM DEBUG] Button not buyable yet`);
                 return;
             }
             if (!CFG.AUTO_CLICK_SUB) {
