@@ -920,21 +920,32 @@
     //  SCANNING / TASK_UNIT 逻辑
     // ═══════════════════════════════════════════════════════════════════════════
     function doScan() {
+        console.log(`[GLM DEBUG] doScan() - state=${state}, qIdx=${qIdx}, scanQueue.length=${scanQueue.length}, AUTO_RUSH_FLOW=${CFG.AUTO_RUSH_FLOW}`);
         if (qIdx >= scanQueue.length) { onSweepDone(); return; }
         const { tab, pkg } = scanQueue[qIdx];
         const te = tabEl(tab);
-        if (!te) return;
+        console.log(`[GLM DEBUG] Checking tab=${tab} (${TABS_MAP[tab]}), pkg=${pkg} (${PKGS_MAP[pkg]})`);
+        if (!te) {
+            console.log(`[GLM DEBUG] tabEl(${tab}) not found`);
+            qIdx++;
+            return;
+        }
         if (!te.classList.contains('active')) {
             te.click(); te.scrollIntoView({ behavior: 'auto', block: 'center' });
             lastTabSwitch = Date.now(); setBar(`🔄 切换到 ${TABS_MAP[tab]}...`); return;
         }
         if (Date.now() - lastTabSwitch < 400) return;
         const b = btnEl(pkg);
+        console.log(`[GLM DEBUG] btnEl(${pkg}) = ${!!b}, canBuy=${canBuy(b)}, isSoldOut=${isSoldOut(b)}, isBusy=${isBusy(b)}`);
+        if (b) {
+            console.log(`[GLM DEBUG] Button text: "${b.innerText}", disabled=${b.disabled}, classList=${b.classList}`);
+        }
         if (canBuy(b)) {
             taskTarget = { tab, pkg }; taskPhase = 'IDLE'; taskRLCount = 0;
             soldOutHits[`${tab}-${pkg}`] = 0;
             setS(tab, pkg, 0); state = 'TASK_UNIT';
             setBar(`🎯 发现可购！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}，即将点击...`, '#389e0d');
+            console.log(`[GLM DEBUG] Found purchasable item! Switching to TASK_UNIT state`);
             return;
         }
         if (isBusy(b)) {
@@ -988,24 +999,42 @@
         } else { qIdx = 0; sweepRestocks = []; }
     }
     function doTaskUnit() {
+        console.log(`[GLM DEBUG] doTaskUnit() - taskPhase=${taskPhase}, AUTO_RUSH_FLOW=${CFG.AUTO_RUSH_FLOW}, AUTO_CLICK_SUB=${CFG.AUTO_CLICK_SUB}`);
         const { tab, pkg } = taskTarget;
         const te = tabEl(tab);
-        if (!te) return;
-        if (!te.classList.contains('active')) { te.click(); return; }
+        if (!te) {
+            console.log(`[GLM DEBUG] tabEl(${tab}) not found in doTaskUnit`);
+            return;
+        }
+        if (!te.classList.contains('active')) { 
+            te.click(); 
+            console.log(`[GLM DEBUG] Clicked tab to activate`);
+            return; 
+        }
         const b = btnEl(pkg);
+        console.log(`[GLM DEBUG] doTaskUnit btn=${!!b}, isSoldOut=${isSoldOut(b)}, canBuy=${canBuy(b)}`);
         if (taskPhase === 'IDLE') {
-            if (isSoldOut(b)) { exitTask(); return; }
+            if (isSoldOut(b)) { 
+                console.log(`[GLM DEBUG] Item sold out, exiting task`);
+                exitTask(); 
+                return; 
+            }
             if (!canBuy(b)) {
                 setBar(`⏳ 等待按钮就绪... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}`, '#d46b08');
+                console.log(`[GLM DEBUG] Button not buyable yet`);
                 return;
             }
             if (!CFG.AUTO_CLICK_SUB && !CFG.AUTO_RUSH_FLOW) {
                 showPayAlarm();
                 setBar(`🎯 <b>发现可购！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}</b>，请手动点击订阅`, '#389e0d');
+                console.log(`[GLM DEBUG] AUTO_CLICK_SUB=${CFG.AUTO_CLICK_SUB}, AUTO_RUSH_FLOW=${CFG.AUTO_RUSH_FLOW} - waiting for manual click`);
                 return;
             }
+            console.log(`[GLM DEBUG] AUTO_RUSH_FLOW=${CFG.AUTO_RUSH_FLOW}, proceeding to click subscribe button`);
             PS.result = null; PS.inProgress = true;
-            b.click(); taskClickTime = Date.now(); taskPhase = 'WAITING';
+            b.click(); 
+            console.log(`[GLM DEBUG] Clicked subscribe button!`);
+            taskClickTime = Date.now(); taskPhase = 'WAITING';
             rushRetryCount = 0;
             setBar(`� ${CFG.AUTO_RUSH_FLOW ? '自动抢购' : '已点击'}，接口重试中... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
             return;
