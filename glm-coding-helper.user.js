@@ -999,14 +999,15 @@
                 setBar(`⏳ 等待按钮就绪... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}`, '#d46b08');
                 return;
             }
-            if (!CFG.AUTO_CLICK_SUB) {
+            if (!CFG.AUTO_CLICK_SUB && !CFG.AUTO_RUSH_FLOW) {
                 showPayAlarm();
                 setBar(`🎯 <b>发现可购！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}</b>，请手动点击订阅`, '#389e0d');
                 return;
             }
             PS.result = null; PS.inProgress = true;
             b.click(); taskClickTime = Date.now(); taskPhase = 'WAITING';
-            setBar(`🔄 已点击，接口重试中... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
+            rushRetryCount = 0;
+            setBar(`� ${CFG.AUTO_RUSH_FLOW ? '自动抢购' : '已点击'}，接口重试中... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
             return;
         }
         if (taskPhase === 'WAITING') {
@@ -1057,7 +1058,7 @@
             if (isPayDialog()) {
                     const verdict = checkPayDialog();
                     if (verdict === 'close') {
-                        if (!CFG.AUTO_CLOSE_INVALID) {
+                        if (!CFG.AUTO_CLOSE_INVALID && !CFG.AUTO_RUSH_FLOW) {
                             state = 'DONE';
                             setBar('⚠️ 检测到异常支付弹窗，请手动确认是否需要扫码！', '#d46b08');
                             return;
@@ -1087,7 +1088,7 @@
                         setBar('💳 <b>支付弹窗已出现！请立即扫码支付！</b> 脚本已停止。', '#16a34a');
                     } else if (CFG.AUTO_RUSH_FLOW) {
                         const elapsed = Date.now() - taskClickTime;
-                        if (elapsed > 15000) {
+                        if (elapsed > 8000) {
                             rushRetryCount++;
                             if (rushRetryCount >= CFG.RUSH_RETRY_LIMIT) {
                                 state = 'DONE';
@@ -1095,7 +1096,7 @@
                             } else {
                                 closePayDialog();
                                 setBar(`🔄 自动抢购第 ${rushRetryCount}/${CFG.RUSH_RETRY_LIMIT} 次重试...`, '#d46b08');
-                                taskPhase = 'IDLE';
+                                setTimeout(() => { taskPhase = 'IDLE'; }, 500);
                             }
                         } else {
                             setBar(`🔄 ${TABS_MAP[tab]}·${PKGS_MAP[pkg]} 等待付款金额... (${(elapsed/1000).toFixed(1)}s)`, '#1677ff');
