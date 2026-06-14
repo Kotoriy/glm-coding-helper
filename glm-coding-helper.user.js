@@ -512,8 +512,12 @@
         RUSH_RETRY_LIMIT  : 10,
         RUSH_START_HOUR   : 9,
         RUSH_START_MIN    : 30,
+        RUSH_START_SEC    : 0,
+        RUSH_START_MS     : 0,
         RUSH_END_HOUR     : 10,
         RUSH_END_MIN      : 10,
+        RUSH_END_SEC      : 0,
+        RUSH_END_MS       : 0,
     };
     function loadCfg() { try { const s = GM_getValue(STORAGE_KEY, null); return s ? { ...DEF, ...JSON.parse(s) } : { ...DEF }; } catch { return { ...DEF }; } }
     function saveCfg(c) { GM_setValue(STORAGE_KEY, JSON.stringify(c)); }
@@ -628,17 +632,21 @@
         const end = 10 * 60 + 10;   // 10:10
         return time >= start && time <= end;
     }
-    // ── 抢购时间段判断（可配置）────────────────────────────────────────────
+    // ── 抢购时间段判断（可配置，精确到毫秒）────────────────────────────────
     function isRushTime() {
         const now = new Date();
         const h = now.getHours();
         const m = now.getMinutes();
         const s = now.getSeconds();
-        const time = h * 3600 + m * 60 + s;
-        const start = (CFG.RUSH_START_HOUR || 9) * 3600 + (CFG.RUSH_START_MIN || 30) * 60;
-        const end = (CFG.RUSH_END_HOUR || 10) * 3600 + (CFG.RUSH_END_MIN || 10) * 60;
-        const inTime = time >= start && time <= end;
-        console.log(`[GLM DEBUG] isRushTime check: now=${h}:${m}:${s}, start=${CFG.RUSH_START_HOUR}:${CFG.RUSH_START_MIN}, end=${CFG.RUSH_END_HOUR}:${CFG.RUSH_END_MIN}, result=${inTime}`);
+        const ms = now.getMilliseconds();
+        const timeMs = h * 3600000 + m * 60000 + s * 1000 + ms;
+        const startMs = (CFG.RUSH_START_HOUR || 9) * 3600000 + (CFG.RUSH_START_MIN || 30) * 60000 + (CFG.RUSH_START_SEC || 0) * 1000 + (CFG.RUSH_START_MS || 0);
+        const endMs = (CFG.RUSH_END_HOUR || 10) * 3600000 + (CFG.RUSH_END_MIN || 10) * 60000 + (CFG.RUSH_END_SEC || 0) * 1000 + (CFG.RUSH_END_MS || 0);
+        const inTime = timeMs >= startMs && timeMs <= endMs;
+        const timeStr = `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+        const startStr = `${CFG.RUSH_START_HOUR}:${String(CFG.RUSH_START_MIN || 0).padStart(2,'0')}:${String(CFG.RUSH_START_SEC || 0).padStart(2,'0')}.${String(CFG.RUSH_START_MS || 0).padStart(3,'0')}`;
+        const endStr = `${CFG.RUSH_END_HOUR}:${String(CFG.RUSH_END_MIN || 0).padStart(2,'0')}:${String(CFG.RUSH_END_SEC || 0).padStart(2,'0')}.${String(CFG.RUSH_END_MS || 0).padStart(3,'0')}`;
+        console.log(`[GLM DEBUG] isRushTime check: now=${timeStr}, start=${startStr}, end=${endStr}, result=${inTime}`);
         return inTime;
     }
     // ── DOM 访问 ──────────────────────────────────────────────────────────────
@@ -876,18 +884,26 @@
                     <span title="开启后自动完成：点击特惠订购→等待验证码识别→点击确定。如果没有出现付款金额则自动关闭弹窗重试，直到手动取消或生成付款金额。" style="margin-left:6px;cursor:help;color:#999;font-size:14px;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;line-height:1">?</span>
                 </label>
                 <div id="glm-rush-time" style="margin-top:8px;padding:10px;background:#f5f5f5;border-radius:6px;display:${CFG.AUTO_RUSH_FLOW ? 'block' : 'none'}">
-                    <div style="font-size:13px;font-weight:bold;margin-bottom:8px;color:#444">抢购时间段设置</div>
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                        <span style="font-size:13px;color:#555">开始时间：</span>
-                        <input type="number" id="glm-rush-start-hour" value="${CFG.RUSH_START_HOUR || 9}" min="0" max="23" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                    <div style="font-size:13px;font-weight:bold;margin-bottom:8px;color:#444">抢购时间段设置（精确到毫秒）</div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                        <span style="font-size:13px;color:#555;width:70px">开始时间：</span>
+                        <input type="number" id="glm-rush-start-hour" value="${CFG.RUSH_START_HOUR || 9}" min="0" max="23" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="小时">
                         <span>:</span>
-                        <input type="number" id="glm-rush-start-min" value="${CFG.RUSH_START_MIN || 30}" min="0" max="59" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                        <input type="number" id="glm-rush-start-min" value="${CFG.RUSH_START_MIN || 30}" min="0" max="59" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="分钟">
+                        <span>:</span>
+                        <input type="number" id="glm-rush-start-sec" value="${CFG.RUSH_START_SEC || 0}" min="0" max="59" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="秒">
+                        <span>.</span>
+                        <input type="number" id="glm-rush-start-ms" value="${CFG.RUSH_START_MS || 0}" min="0" max="999" style="width:55px;padding:4px;border:1px solid #ddd;border-radius:4px" title="毫秒">
                     </div>
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                        <span style="font-size:13px;color:#555">结束时间：</span>
-                        <input type="number" id="glm-rush-end-hour" value="${CFG.RUSH_END_HOUR || 10}" min="0" max="23" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                        <span style="font-size:13px;color:#555;width:70px">结束时间：</span>
+                        <input type="number" id="glm-rush-end-hour" value="${CFG.RUSH_END_HOUR || 10}" min="0" max="23" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="小时">
                         <span>:</span>
-                        <input type="number" id="glm-rush-end-min" value="${CFG.RUSH_END_MIN || 10}" min="0" max="59" style="width:50px;padding:4px;border:1px solid #ddd;border-radius:4px">
+                        <input type="number" id="glm-rush-end-min" value="${CFG.RUSH_END_MIN || 10}" min="0" max="59" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="分钟">
+                        <span>:</span>
+                        <input type="number" id="glm-rush-end-sec" value="${CFG.RUSH_END_SEC || 0}" min="0" max="59" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="秒">
+                        <span>.</span>
+                        <input type="number" id="glm-rush-end-ms" value="${CFG.RUSH_END_MS || 0}" min="0" max="999" style="width:55px;padding:4px;border:1px solid #ddd;border-radius:4px" title="毫秒">
                     </div>
                     <div style="display:flex;align-items:center;gap:10px">
                         <span style="font-size:13px;color:#555">重试次数：</span>
@@ -935,8 +951,12 @@
                 AUTO_RUSH_FLOW    : panel.querySelector('#glm-arf').checked,
                 RUSH_START_HOUR   : parseInt(panel.querySelector('#glm-rush-start-hour').value) || 9,
                 RUSH_START_MIN    : parseInt(panel.querySelector('#glm-rush-start-min').value) || 30,
+                RUSH_START_SEC    : parseInt(panel.querySelector('#glm-rush-start-sec').value) || 0,
+                RUSH_START_MS     : parseInt(panel.querySelector('#glm-rush-start-ms').value) || 0,
                 RUSH_END_HOUR     : parseInt(panel.querySelector('#glm-rush-end-hour').value) || 10,
                 RUSH_END_MIN      : parseInt(panel.querySelector('#glm-rush-end-min').value) || 10,
+                RUSH_END_SEC      : parseInt(panel.querySelector('#glm-rush-end-sec').value) || 0,
+                RUSH_END_MS       : parseInt(panel.querySelector('#glm-rush-end-ms').value) || 0,
                 RUSH_RETRY_LIMIT  : parseInt(panel.querySelector('#glm-rush-retry').value) || 10,
                 SAFE_DEFAULTS_VERSION,
             });
@@ -1082,9 +1102,11 @@
                     const now = new Date();
                     const h = now.getHours();
                     const m = now.getMinutes();
-                    const startStr = `${CFG.RUSH_START_HOUR}:${String(CFG.RUSH_START_MIN || 0).padStart(2, '0')}`;
-                    const endStr = `${CFG.RUSH_END_HOUR}:${String(CFG.RUSH_END_MIN || 0).padStart(2, '0')}`;
-                    setBar(`⏰ <b>${h}:${String(m).padStart(2,'0')}</b> 未到抢购时间(${startStr}-${endStr})，等待中...`, '#d46b08');
+                    const s = now.getSeconds();
+                    const ms = now.getMilliseconds();
+                    const startStr = `${CFG.RUSH_START_HOUR}:${String(CFG.RUSH_START_MIN || 0).padStart(2, '0')}:${String(CFG.RUSH_START_SEC || 0).padStart(2, '0')}.${String(CFG.RUSH_START_MS || 0).padStart(3, '0')}`;
+                    const endStr = `${CFG.RUSH_END_HOUR}:${String(CFG.RUSH_END_MIN || 0).padStart(2, '0')}:${String(CFG.RUSH_END_SEC || 0).padStart(2, '0')}.${String(CFG.RUSH_END_MS || 0).padStart(3, '0')}`;
+                    setBar(`⏰ <b>${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}</b> 未到抢购时间(${startStr}-${endStr})，等待中...`, '#d46b08');
                     console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled but not in rush time, waiting...`);
                     return;
                 }
