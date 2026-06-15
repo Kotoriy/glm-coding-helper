@@ -51,9 +51,9 @@
         const captchaCfg = (() => {
             try {
                 const raw = GM_getValue('glm_coding_config_v5', '{}');
-                return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, AUTO_RUSH_FLOW: false, ...JSON.parse(raw || '{}') };
+                return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, ...JSON.parse(raw || '{}') };
             } catch {
-                return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, AUTO_RUSH_FLOW: false };
+                return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false };
             }
         })();
         function log(msg) {
@@ -241,7 +241,7 @@
                 await sleep(180);
             }
             await sleep(250);
-            if (captchaCfg.AUTO_CAPTCHA_CONFIRM || captchaCfg.AUTO_RUSH_FLOW) clickConfirm();
+            if (captchaCfg.AUTO_CAPTCHA_CONFIRM) clickConfirm();
         }
         async function tick() {
             if (solving) return;
@@ -508,16 +508,6 @@
         AUTO_CLICK_SUB    : true,
         AUTO_CAPTCHA_CLICK : true,
         AUTO_CAPTCHA_CONFIRM: false,
-        AUTO_RUSH_FLOW    : false,
-        RUSH_RETRY_LIMIT  : 10,
-        RUSH_START_HOUR   : 9,
-        RUSH_START_MIN    : 30,
-        RUSH_START_SEC    : 0,
-        RUSH_START_MS     : 0,
-        RUSH_END_HOUR     : 10,
-        RUSH_END_MIN      : 10,
-        RUSH_END_SEC      : 0,
-        RUSH_END_MS       : 0,
     };
     function loadCfg() { try { const s = GM_getValue(STORAGE_KEY, null); return s ? { ...DEF, ...JSON.parse(s) } : { ...DEF }; } catch { return { ...DEF }; } }
     function saveCfg(c) { GM_setValue(STORAGE_KEY, JSON.stringify(c)); }
@@ -596,7 +586,6 @@
     let taskTarget = null, taskPhase = 'IDLE', taskClickTime = 0, taskRLCount = 0;
     let lastCloseReason = '';
     let sleepUntil = 0;
-    let rushRetryCount = 0;
     const MAX_RL = 3, MODAL_WAIT = 15000, EMPTY_SWEEP_CONFIRM = 3, EMPTY_SWEEP_RETRY_MS = 180000, SOLD_OUT_CONFIRM = 2;
     // ── 工具函数 ──────────────────────────────────────────────────────────────
     function parseRestock(text) {
@@ -632,23 +621,6 @@
         const end = 10 * 60 + 10;   // 10:10
         return time >= start && time <= end;
     }
-    // ── 抢购时间段判断（可配置，精确到毫秒）────────────────────────────────
-    function isRushTime() {
-        const now = new Date();
-        const h = now.getHours();
-        const m = now.getMinutes();
-        const s = now.getSeconds();
-        const ms = now.getMilliseconds();
-        const timeMs = h * 3600000 + m * 60000 + s * 1000 + ms;
-        const startMs = (CFG.RUSH_START_HOUR || 9) * 3600000 + (CFG.RUSH_START_MIN || 30) * 60000 + (CFG.RUSH_START_SEC || 0) * 1000 + (CFG.RUSH_START_MS || 0);
-        const endMs = (CFG.RUSH_END_HOUR || 10) * 3600000 + (CFG.RUSH_END_MIN || 10) * 60000 + (CFG.RUSH_END_SEC || 0) * 1000 + (CFG.RUSH_END_MS || 0);
-        const inTime = timeMs >= startMs && timeMs <= endMs;
-        const timeStr = `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
-        const startStr = `${CFG.RUSH_START_HOUR}:${String(CFG.RUSH_START_MIN || 0).padStart(2,'0')}:${String(CFG.RUSH_START_SEC || 0).padStart(2,'0')}.${String(CFG.RUSH_START_MS || 0).padStart(3,'0')}`;
-        const endStr = `${CFG.RUSH_END_HOUR}:${String(CFG.RUSH_END_MIN || 0).padStart(2,'0')}:${String(CFG.RUSH_END_SEC || 0).padStart(2,'0')}.${String(CFG.RUSH_END_MS || 0).padStart(3,'0')}`;
-        console.log(`[GLM DEBUG] isRushTime check: now=${timeStr}, start=${startStr}, end=${endStr}, result=${inTime}`);
-        return inTime;
-    }
     // ── DOM 访问 ──────────────────────────────────────────────────────────────
     const tabEl     = n => document.querySelectorAll('#switchTabBox .switch-tab-item')[n];
     const btnEl     = n => document.querySelector(`.glm-coding-package-list > div:nth-child(${n}) > div > .package-card-btn-box > button`);
@@ -659,6 +631,11 @@
     function findRLModal() {
         for (const w of document.querySelectorAll('.el-dialog__wrapper'))
             if (getComputedStyle(w).display !== 'none' && (w.innerText || '').includes('当前购买人数较多')) return w;
+        return null;
+    }
+    function findBusyModal() {
+        for (const w of document.querySelectorAll('.el-dialog__wrapper'))
+            if (getComputedStyle(w).display !== 'none' && (w.innerText || '').includes('抢购人数过多')) return w;
         return null;
     }
     function getPayDialog() {
@@ -878,51 +855,7 @@
                     <span style="font-size:14px;color:#555">自动点击验证码确定</span>
                     <span title="默认关闭。开启后点完验证码文字会自动点确定；关闭后需要你手动点确定。" style="margin-left:6px;cursor:help;color:#999;font-size:14px;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;line-height:1">?</span>
                 </label>
-                <label style="display:flex;align-items:center;cursor:pointer">
-                    <input type="checkbox" id="glm-arf" ${CFG.AUTO_RUSH_FLOW ? 'checked' : ''} style="margin-right:8px">
-                    <span style="font-size:14px;color:#555">启用自动抢购流程</span>
-                    <span title="开启后自动完成：点击特惠订购→等待验证码识别→点击确定。如果没有出现付款金额则自动关闭弹窗重试，直到手动取消或生成付款金额。" style="margin-left:6px;cursor:help;color:#999;font-size:14px;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;line-height:1">?</span>
-                </label>
-                <div id="glm-rush-time" style="margin-top:8px;padding:10px;background:#f5f5f5;border-radius:6px;display:${CFG.AUTO_RUSH_FLOW ? 'block' : 'none'}">
-                    <div style="font-size:13px;font-weight:bold;margin-bottom:8px;color:#444">抢购时间段设置（精确到毫秒）</div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                        <span style="font-size:13px;color:#555;width:70px">开始时间：</span>
-                        <input type="number" id="glm-rush-start-hour" value="${CFG.RUSH_START_HOUR || 9}" min="0" max="23" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="小时">
-                        <span>:</span>
-                        <input type="number" id="glm-rush-start-min" value="${CFG.RUSH_START_MIN || 30}" min="0" max="59" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="分钟">
-                        <span>:</span>
-                        <input type="number" id="glm-rush-start-sec" value="${CFG.RUSH_START_SEC || 0}" min="0" max="59" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="秒">
-                        <span>.</span>
-                        <input type="number" id="glm-rush-start-ms" value="${CFG.RUSH_START_MS || 0}" min="0" max="999" style="width:55px;padding:4px;border:1px solid #ddd;border-radius:4px" title="毫秒">
-                    </div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                        <span style="font-size:13px;color:#555;width:70px">结束时间：</span>
-                        <input type="number" id="glm-rush-end-hour" value="${CFG.RUSH_END_HOUR || 10}" min="0" max="23" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="小时">
-                        <span>:</span>
-                        <input type="number" id="glm-rush-end-min" value="${CFG.RUSH_END_MIN || 10}" min="0" max="59" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="分钟">
-                        <span>:</span>
-                        <input type="number" id="glm-rush-end-sec" value="${CFG.RUSH_END_SEC || 0}" min="0" max="59" style="width:45px;padding:4px;border:1px solid #ddd;border-radius:4px" title="秒">
-                        <span>.</span>
-                        <input type="number" id="glm-rush-end-ms" value="${CFG.RUSH_END_MS || 0}" min="0" max="999" style="width:55px;padding:4px;border:1px solid #ddd;border-radius:4px" title="毫秒">
-                    </div>
-                    <div style="display:flex;align-items:center;gap:10px">
-                        <span style="font-size:13px;color:#555">重试次数：</span>
-                        <input type="number" id="glm-rush-retry" value="${CFG.RUSH_RETRY_LIMIT || 10}" min="1" max="100" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px">
-                        <span style="font-size:12px;color:#999">次（达到上限后停止）</span>
-                    </div>
-                </div>
             </div>
-            <script>
-                (function() {
-                    var checkbox = document.getElementById('glm-arf');
-                    var timeSection = document.getElementById('glm-rush-time');
-                    if (checkbox && timeSection) {
-                        checkbox.addEventListener('change', function() {
-                            timeSection.style.display = checkbox.checked ? 'block' : 'none';
-                        });
-                    }
-                })();
-            </script>
             <div style="display:flex;justify-content:space-between;gap:10px">
                 <button id="glm-multi" style="padding:8px 16px;border:1px solid #52c41a;background:#f6ffed;color:#52c41a;border-radius:6px;cursor:pointer;font-weight:600">🚀 一键多开</button>
                 <div style="display:flex;gap:10px">
@@ -948,16 +881,6 @@
                 AUTO_CLICK_SUB    : panel.querySelector('#glm-acs').checked,
                 AUTO_CAPTCHA_CLICK: panel.querySelector('#glm-acc').checked,
                 AUTO_CAPTCHA_CONFIRM: panel.querySelector('#glm-acf').checked,
-                AUTO_RUSH_FLOW    : panel.querySelector('#glm-arf').checked,
-                RUSH_START_HOUR   : parseInt(panel.querySelector('#glm-rush-start-hour').value) || 9,
-                RUSH_START_MIN    : parseInt(panel.querySelector('#glm-rush-start-min').value) || 30,
-                RUSH_START_SEC    : parseInt(panel.querySelector('#glm-rush-start-sec').value) || 0,
-                RUSH_START_MS     : parseInt(panel.querySelector('#glm-rush-start-ms').value) || 0,
-                RUSH_END_HOUR     : parseInt(panel.querySelector('#glm-rush-end-hour').value) || 10,
-                RUSH_END_MIN      : parseInt(panel.querySelector('#glm-rush-end-min').value) || 10,
-                RUSH_END_SEC      : parseInt(panel.querySelector('#glm-rush-end-sec').value) || 0,
-                RUSH_END_MS       : parseInt(panel.querySelector('#glm-rush-end-ms').value) || 0,
-                RUSH_RETRY_LIMIT  : parseInt(panel.querySelector('#glm-rush-retry').value) || 10,
                 SAFE_DEFAULTS_VERSION,
             });
             ov.remove(); alert('已保存，即将刷新。'); location.reload();
@@ -992,35 +915,32 @@
     //  SCANNING / TASK_UNIT 逻辑
     // ═══════════════════════════════════════════════════════════════════════════
     function doScan() {
-        console.log(`[GLM DEBUG] doScan() - state=${state}, qIdx=${qIdx}, scanQueue.length=${scanQueue.length}, AUTO_RUSH_FLOW=${CFG.AUTO_RUSH_FLOW}`);
         if (qIdx >= scanQueue.length) { onSweepDone(); return; }
         const { tab, pkg } = scanQueue[qIdx];
         const te = tabEl(tab);
-        console.log(`[GLM DEBUG] Checking tab=${tab} (${TABS_MAP[tab]}), pkg=${pkg} (${PKGS_MAP[pkg]})`);
-        if (!te) {
-            console.log(`[GLM DEBUG] tabEl(${tab}) not found`);
-            qIdx++;
-            return;
-        }
+        if (!te) return;
         if (!te.classList.contains('active')) {
             te.click(); te.scrollIntoView({ behavior: 'auto', block: 'center' });
             lastTabSwitch = Date.now(); setBar(`🔄 切换到 ${TABS_MAP[tab]}...`); return;
         }
         if (Date.now() - lastTabSwitch < 400) return;
         const b = btnEl(pkg);
-        console.log(`[GLM DEBUG] btnEl(${pkg}) = ${!!b}, canBuy=${canBuy(b)}, isSoldOut=${isSoldOut(b)}, isBusy=${isBusy(b)}`);
-        if (b) {
-            console.log(`[GLM DEBUG] Button text: "${b.innerText}", disabled=${b.disabled}, classList=${b.classList}`);
-        }
         if (canBuy(b)) {
             taskTarget = { tab, pkg }; taskPhase = 'IDLE'; taskRLCount = 0;
             soldOutHits[`${tab}-${pkg}`] = 0;
             setS(tab, pkg, 0); state = 'TASK_UNIT';
             setBar(`🎯 发现可购！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}，即将点击...`, '#389e0d');
-            console.log(`[GLM DEBUG] Found purchasable item! Switching to TASK_UNIT state`);
             return;
         }
         if (isBusy(b)) {
+            // 在自动抢购模式下，即使按钮显示繁忙也尝试点击
+            if (CFG.AUTO_RUSH_FLOW) {
+                console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled, forcing click on busy button`);
+                sweepBusyCount++;
+                state = 'TASK_UNIT';
+                taskTarget = { tab, pkg };
+                return;
+            }
             sweepBusyCount++;
             setBar(`⚡ 系统繁忙 ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}，跳过...`);
             qIdx++; return;
@@ -1071,72 +991,63 @@
         } else { qIdx = 0; sweepRestocks = []; }
     }
     function doTaskUnit() {
-        console.log(`[GLM DEBUG] doTaskUnit() - taskPhase=${taskPhase}, AUTO_RUSH_FLOW=${CFG.AUTO_RUSH_FLOW}, AUTO_CLICK_SUB=${CFG.AUTO_CLICK_SUB}`);
         const { tab, pkg } = taskTarget;
         const te = tabEl(tab);
-        if (!te) {
-            console.log(`[GLM DEBUG] tabEl(${tab}) not found in doTaskUnit`);
-            return;
-        }
-        if (!te.classList.contains('active')) { 
-            te.click(); 
-            console.log(`[GLM DEBUG] Clicked tab to activate`);
-            return; 
-        }
+        if (!te) return;
+        if (!te.classList.contains('active')) { te.click(); return; }
         const b = btnEl(pkg);
-        console.log(`[GLM DEBUG] doTaskUnit btn=${!!b}, isSoldOut=${isSoldOut(b)}, canBuy=${canBuy(b)}`);
         if (taskPhase === 'IDLE') {
-            // 在自动抢购模式下，优先判断时间，时间到了就直接点击
+            // 自动抢购模式：强制启用按钮并点击
             if (CFG.AUTO_RUSH_FLOW) {
-                if (!isRushTime()) {
-                    const now = new Date();
-                    const h = now.getHours();
-                    const m = now.getMinutes();
-                    const s = now.getSeconds();
-                    const ms = now.getMilliseconds();
-                    const startStr = `${CFG.RUSH_START_HOUR}:${String(CFG.RUSH_START_MIN || 0).padStart(2, '0')}:${String(CFG.RUSH_START_SEC || 0).padStart(2, '0')}.${String(CFG.RUSH_START_MS || 0).padStart(3, '0')}`;
-                    const endStr = `${CFG.RUSH_END_HOUR}:${String(CFG.RUSH_END_MIN || 0).padStart(2, '0')}:${String(CFG.RUSH_END_SEC || 0).padStart(2, '0')}.${String(CFG.RUSH_END_MS || 0).padStart(3, '0')}`;
-                    setBar(`⏰ <b>${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}</b> 未到抢购时间(${startStr}-${endStr})，等待中...`, '#d46b08');
-                    console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled but not in rush time, waiting...`);
+                // 强制启用按钮
+                forceEnableButtons();
+                const b = btnEl(pkg); // 重新获取按钮引用
+                if (!b) {
+                    setBar(`⚠️ 无法找到按钮 ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}`, '#d46b08');
+                    taskPhase = 'IDLE';
                     return;
                 }
-                // 时间到了，即使按钮看起来售罄也尝试点击（脚本会强制启用按钮）
-                console.log(`[GLM DEBUG] AUTO_RUSH_FLOW enabled and in rush time, clicking subscribe button (soldOut=${isSoldOut(b)}, canBuy=${canBuy(b)})`);
                 PS.result = null; PS.inProgress = true;
-                b.click(); 
-                console.log(`[GLM DEBUG] Clicked subscribe button!`);
-                taskClickTime = Date.now(); taskPhase = 'WAITING';
-                rushRetryCount = 0;
-                setBar(`🚀 自动抢购中！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
+                b.click(); taskClickTime = Date.now(); taskPhase = 'WAITING';
+                setBar(`🚀 自动抢购中！强制点击 ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}`, '#d46b08');
                 return;
             }
-            // 非自动抢购模式，保持原有逻辑
-            if (isSoldOut(b)) { 
-                console.log(`[GLM DEBUG] Item sold out, exiting task`);
-                exitTask(); 
-                return; 
-            }
+            if (isSoldOut(b)) { exitTask(); return; }
             if (!canBuy(b)) {
                 setBar(`⏳ 等待按钮就绪... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}`, '#d46b08');
-                console.log(`[GLM DEBUG] Button not buyable yet`);
                 return;
             }
             if (!CFG.AUTO_CLICK_SUB) {
                 showPayAlarm();
                 setBar(`🎯 <b>发现可购！${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}</b>，请手动点击订阅`, '#389e0d');
-                console.log(`[GLM DEBUG] AUTO_CLICK_SUB=${CFG.AUTO_CLICK_SUB}, waiting for manual click`);
                 return;
             }
-            console.log(`[GLM DEBUG] AUTO_CLICK_SUB enabled, clicking subscribe button`);
             PS.result = null; PS.inProgress = true;
-            b.click(); 
-            console.log(`[GLM DEBUG] Clicked subscribe button!`);
-            taskClickTime = Date.now(); taskPhase = 'WAITING';
-            rushRetryCount = 0;
-            setBar(`🚀 已点击，接口重试中... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
+            b.click(); taskClickTime = Date.now(); taskPhase = 'WAITING';
+            setBar(`🔄 已点击，接口重试中... ${TABS_MAP[tab]} · ${PKGS_MAP[pkg]}（限流 ${taskRLCount}/${MAX_RL}）`, '#d46b08');
             return;
         }
         if (taskPhase === 'WAITING') {
+            const busyw = findBusyModal();
+            if (busyw) {
+                if (!CFG.AUTO_CLOSE_INVALID) {
+                    setBar('⚠️ 限流弹窗（"抢购人数过多"），请手动关闭后重试', '#d46b08');
+                    return;
+                }
+                closeModal(busyw); taskRLCount++;
+                if (taskRLCount >= MAX_RL) {
+                    if (isGoldenTime()) {
+                        setBar('🔥 黄金时间！连续限流但禁止刷新，继续重试！', '#ff4d4f');
+                        taskRLCount = 0; taskPhase = 'IDLE';
+                    } else {
+                        setBar(`🔁 连续 ${MAX_RL} 次限流，即将刷新...`, '#cf1322');
+                        setTimeout(() => location.replace(GLM_CODING_URL()), 50);
+                    }
+                    return;
+                }
+                setBar(`⚠️ 限流 ${taskRLCount}/${MAX_RL}，自动关闭"抢购人数过多"弹窗后重试...`, '#d46b08');
+                taskPhase = 'IDLE'; return;
+            }
             const rlw = findRLModal();
             if (rlw) {
                 if (isAirplanePayDialog(rlw)) {
@@ -1182,56 +1093,40 @@
                 taskPhase = 'IDLE'; return;
             }
             if (isPayDialog()) {
-                    const verdict = checkPayDialog();
-                    if (verdict === 'close') {
-                        if (!CFG.AUTO_CLOSE_INVALID && !CFG.AUTO_RUSH_FLOW) {
-                            state = 'DONE';
-                            setBar('⚠️ 检测到异常支付弹窗，请手动确认是否需要扫码！', '#d46b08');
-                            return;
-                        }
-                        const reason = PS.result === 'busy'
-                            ? `✈️ 系统繁忙(${PS.rawCode || 555})，关闭弹窗`
-                            : `📉 ${TABS_MAP[taskTarget.tab]}·${PKGS_MAP[taskTarget.pkg]} 售罄`;
-                        closePayDialog();
-                        lastCloseReason = reason;
-                        const nextIdx = qIdx + 1;
-                        const isLoop = nextIdx >= scanQueue.length;
-                        qIdx = isLoop ? 0 : nextIdx;
-                        taskTarget = null; taskPhase = 'IDLE'; taskRLCount = 0;
-                        state = 'SCANNING';
-                        setBar(`${reason}，${isLoop ? '🔄 轮询一圈，从头重试...' : '试下一个...'} `, '#d46b08');
-                        return;
-                    }
-                    if (verdict === 'warn') {
-                        setBar('⚠️ 弹窗显示小飞机但API未返回繁忙/售罄，前后端不一致。不自动关闭，请手动确认。如果有二维码请扫码支付！', '#ff4d4f');
-                        return;
-                    }
-                    const prices = readDialogPrices();
-                    if (everSucceeded || prices?.any) {
+                const verdict = checkPayDialog();
+                if (verdict === 'close') {
+                    if (!CFG.AUTO_CLOSE_INVALID) {
                         state = 'DONE';
-                        rushRetryCount = 0;
-                        if (everSucceeded) showPayAlarm();
-                        setBar('💳 <b>支付弹窗已出现！请立即扫码支付！</b> 脚本已停止。', '#16a34a');
-                    } else if (CFG.AUTO_RUSH_FLOW) {
-                        const elapsed = Date.now() - taskClickTime;
-                        if (elapsed > 8000) {
-                            rushRetryCount++;
-                            if (rushRetryCount >= CFG.RUSH_RETRY_LIMIT) {
-                                state = 'DONE';
-                                setBar(`⚠️ 自动抢购重试次数已达上限(${CFG.RUSH_RETRY_LIMIT})，请手动检查！`, '#ff4d4f');
-                            } else {
-                                closePayDialog();
-                                setBar(`🔄 自动抢购第 ${rushRetryCount}/${CFG.RUSH_RETRY_LIMIT} 次重试...`, '#d46b08');
-                                setTimeout(() => { taskPhase = 'IDLE'; }, 500);
-                            }
-                        } else {
-                            setBar(`🔄 ${TABS_MAP[tab]}·${PKGS_MAP[pkg]} 等待付款金额... (${(elapsed/1000).toFixed(1)}s)`, '#1677ff');
-                        }
-                    } else {
-                        setBar(`🔄 ${TABS_MAP[tab]}·${PKGS_MAP[pkg]} 弹窗等待确认...`, '#1677ff');
+                        setBar('⚠️ 检测到异常支付弹窗，请手动确认是否需要扫码！', '#d46b08');
+                        return;
                     }
+                    const reason = PS.result === 'busy'
+                        ? `✈️ 系统繁忙(${PS.rawCode || 555})，关闭弹窗`
+                        : `📉 ${TABS_MAP[taskTarget.tab]}·${PKGS_MAP[taskTarget.pkg]} 售罄`;
+                    closePayDialog();
+                    lastCloseReason = reason;
+                    const nextIdx = qIdx + 1;
+                    const isLoop = nextIdx >= scanQueue.length;
+                    qIdx = isLoop ? 0 : nextIdx;
+                    taskTarget = null; taskPhase = 'IDLE'; taskRLCount = 0;
+                    state = 'SCANNING';
+                    setBar(`${reason}，${isLoop ? '🔄 轮询一圈，从头重试...' : '试下一个...'} `, '#d46b08');
                     return;
                 }
+                if (verdict === 'warn') {
+                    setBar('⚠️ 弹窗显示小飞机但API未返回繁忙/售罄，前后端不一致。不自动关闭，请手动确认。如果有二维码请扫码支付！', '#ff4d4f');
+                    return;
+                }
+                const prices = readDialogPrices();
+                if (everSucceeded || prices?.any) {
+                    state = 'DONE';
+                    if (everSucceeded) showPayAlarm();
+                    setBar('💳 <b>支付弹窗已出现！请立即扫码支付！</b> 脚本已停止。', '#16a34a');
+                } else {
+                    setBar(`🔄 ${TABS_MAP[tab]}·${PKGS_MAP[pkg]} 弹窗等待确认...`, '#1677ff');
+                }
+                return;
+            }
             if (isSuccessDialog()) {
                 setS(tab, pkg, 2); state = 'DONE';
                 setBar('🎉 订阅成功！恭喜！', '#237804'); return;
@@ -1270,7 +1165,6 @@
             '.buy-btn.disabled',
             '.glm-coding-package-list .package-card-btn-box button[disabled]',
             '.glm-coding-package-list .package-card-btn-box button.is-disabled',
-            '.glm-coding-package-list .package-card-btn-box button.disabled',
             '.glm-coding-package-list button[disabled]',
             '[class*="package-card"] button[disabled]',
             '[class*="subscribe"] button[disabled]',
@@ -1279,7 +1173,6 @@
             document.querySelectorAll(selector).forEach(b => {
                 b.removeAttribute('disabled');
                 b.classList.remove('is-disabled', 'disabled');
-                console.log(`[GLM DEBUG] forceEnableButtons: enabled button with selector "${selector}"`);
             });
         });
     }
@@ -1328,9 +1221,9 @@
     const CAPTCHA_CFG = (() => {
         try {
             const raw = GM_getValue('glm_coding_config_v5', '{}');
-            return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, AUTO_RUSH_FLOW: false, ...JSON.parse(raw || '{}') };
+            return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, ...JSON.parse(raw || '{}') };
         } catch {
-            return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false, AUTO_RUSH_FLOW: false };
+            return { AUTO_CAPTCHA_CLICK: true, AUTO_CAPTCHA_CONFIRM: false };
         }
     })();
     function getWindowIndex() {
@@ -1488,25 +1381,21 @@
             rushState = 'idle';
             (async function() {
                 var isRushMode = isGoldenTime();
-                if (CAPTCHA_CFG.AUTO_RUSH_FLOW || isRushMode) {
-                    if (isRushMode) {
-                        await waitForTargetTime();
-                        rushStatus('\uD83D\uDE80 [#' + winIdx + '] \u5361\u70B9\u53D1\u9001!', '#ff4d4f');
-                    } else {
-                        await new Promise(function(r) { setTimeout(r, 300); });
-                        rushStatus('\uD83D\uDE80 [#' + winIdx + '] \u81EA\u52A8\u786E\u8BA4...', '#237804');
-                    }
-                    rushState = 'confirming';
-                    var clicked = findAndClickConfirm();
-                    if (clicked) {
-                        rushState = 'confirmed';
-                        rushStatus('\uD83C\uDFAF [#' + winIdx + '] \u5DF2\u70B9\u786E\u8BA4!' + (isRushMode ? ' (\u5361\u70B0)' : ''), '#237804');
-                    } else {
-                        rushState = 'idle';
-                        rushStatus('\u26A0\uFE0F [#' + winIdx + '] \u672A\u627E\u5230\u786E\u8BA4\u6309\u94AE!', '#faad14');
-                    }
+                if (isRushMode) {
+                    await waitForTargetTime();
+                    rushStatus('\uD83D\uDE80 [#' + winIdx + '] \u5361\u70B9\u53D1\u9001!', '#ff4d4f');
                 } else {
-                    rushStatus('\u23F3 [#' + winIdx + '] \u8BF7\u624B\u52A8\u70B9\u51FB\u786E\u8BA4\u6309\u94AE', '#1890ff');
+                    await new Promise(function(r) { setTimeout(r, 300); });
+                    rushStatus('\uD83D\uDE80 [#' + winIdx + '] \u81EA\u52A8\u786E\u8BA4...', '#237804');
+                }
+                rushState = 'confirming';
+                var clicked = findAndClickConfirm();
+                if (clicked) {
+                    rushState = 'confirmed';
+                    rushStatus('\uD83C\uDFAF [#' + winIdx + '] \u5DF2\u70B9\u786E\u8BA4!' + (isRushMode ? ' (\u5361\u70B0)' : ''), '#237804');
+                } else {
+                    rushState = 'idle';
+                    rushStatus('\u26A0\uFE0F [#' + winIdx + '] \u672A\u627E\u5230\u786E\u8BA4\u6309\u94AE!', '#faad14');
                 }
             })();
         } catch (e) {
