@@ -951,6 +951,26 @@
         qIdx++;
     }
     function onSweepDone() {
+        // 自动抢购模式：跳过休眠逻辑，继续尝试点击
+        if (CFG.AUTO_RUSH_FLOW) {
+            // 检查是否在抢购时间段内
+            if (!isRushTime()) {
+                const now = new Date();
+                const h = now.getHours();
+                const m = now.getMinutes();
+                const s = now.getSeconds();
+                const ms = now.getMilliseconds();
+                const startStr = `${CFG.RUSH_START_HOUR}:${String(CFG.RUSH_START_MIN || 0).padStart(2, '0')}:${String(CFG.RUSH_START_SEC || 0).padStart(2, '0')}.${String(CFG.RUSH_START_MS || 0).padStart(3, '0')}`;
+                const endStr = `${CFG.RUSH_END_HOUR}:${String(CFG.RUSH_END_MIN || 0).padStart(2, '0')}:${String(CFG.RUSH_END_SEC || 0).padStart(2, '0')}.${String(CFG.RUSH_END_MS || 0).padStart(3, '0')}`;
+                setBar(`⏰ <b>${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}</b> 未到抢购时间(${startStr}-${endStr})，等待中...`, '#d46b08');
+                qIdx = 0; sweepRestocks = []; sweepBusyCount = 0; emptySweepCount = 0;
+                return;
+            }
+            // 时间到了，尝试点击第一个套餐
+            qIdx = 0; sweepRestocks = []; sweepBusyCount = 0; emptySweepCount = 0;
+            return;
+        }
+        
         if (sweepBusyCount >= scanQueue.length) {
             setBar('⚡ 所有套餐系统繁忙(batch-preview 555)，刷新页面重试...', '#d46b08');
             setTimeout(() => location.replace(GLM_CODING_URL()), 1500);
